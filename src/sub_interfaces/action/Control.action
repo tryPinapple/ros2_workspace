@@ -1,0 +1,8 @@
+# Define the goal
+geometry_msgs/PoseStamped target
+---
+# Define the result
+bool reached_target 
+---
+# Define a feedback message
+float32 distance_to_goal

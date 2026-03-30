@@ -1,0 +1,8 @@
+launch:
+  - node:
+      pkg: "sub_hardware"
+      exec: "sensor_node.py" 
+      name: "sensor_node" 
+      output: "screen"
+      param:
+        - from: "$(find-pkg-share sub_hardware)/config/params.yaml"

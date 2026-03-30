@@ -1,0 +1,20 @@
+launch:
+  # 1. The Mock TF Tree Publisher
+  - node:
+      pkg: "tf2_ros"
+      exec: "static_transform_publisher"
+      name: "mock_odom_to_base_link"
+      # FIXED: Passed as a single continuous string
+      args: "--x 0 --y 0 --z 0 --roll 0 --pitch 0 --yaw 0 --frame-id odom --child-frame-id base_link"
+
+  # 2. ASUQTR's Control Node
+  - node:
+      pkg: "sub_control"
+      exec: "control_node.py"
+      param:
+        # Load the single source of truth for your LQR math matrices
+        - from: "$(find-pkg-share sub_control)/config/params.yaml"
+        
+        # Example to override some params if needed for safe standalone bench testing
+        #- name: "control_mode"
+        #  value: "lqr_tuning"

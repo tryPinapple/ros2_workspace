@@ -1,0 +1,51 @@
+launch:
+	# load script arguments, fallback to default
+  - arg:
+      name: "urdf_file"
+      default: "$(find-pkg-share sub_launch)/urdf/sub.urdf"
+  
+  # 1. Sub control
+  - node:
+      pkg: "sub_control"
+      exec: "control_node"
+      name: "control_node"
+      param:
+        - from: "$(find-pkg-share sub_control)/config/params.yaml"
+        - name: "use_sim_time"
+          value: true
+  # The TF Tree (Loads Sub geometry geometry)
+  - node:
+      pkg: "robot_state_publisher"
+      exec: "robot_state_publisher"
+      name: "robot_state_publisher"
+      param:
+        - name: "robot_description"
+          value: "$(command 'xacro $(var urdf_file)')"
+        - name: "use_sim_time"
+          value: true
+
+  #  Sensor Fusion (Filtering the fake Gazebo sensor noise)
+  - node:
+      pkg: "robot_localization"
+      exec: "ekf_node"
+      name: "ekf_filter_node"
+      param:
+        - from: "$(find-pkg-share sub_launch)/config/robot_localization.yaml"
+        - name: "use_sim_time"
+          value: true
+
+  # 2. Start the Gazebo Physics Simulator
+  - include:
+      file: "$(find-pkg-share gazebo_ros)/launch/gazebo.launch.py"
+      # Note: You will eventually pass a custom 'world' file argument here
+      # so Gazebo spawns an underwater environment instead of an empty field.
+  
+  # 3. Start ROSbridge for ASUQTR dashboard interaction
+  - node:
+      pkg: "rosbridge_server"
+      exec: "rosbridge_websocket"
+      name: "rosbridge_websocket"
+      # Default port is 9090. You can override it here if needed.
+  
+  # Note: No Hardware sensor/actuator Node! Gazebo listens to the control_node directly 
+  # via a ROS 2 control plugin defined inside your URDF.

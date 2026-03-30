@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<launch>
+    <!--### ASUQTR CONTROL NODE ###-->
+    <node pkg="asuqtr_control_node" type="control_node.py" name="control_node" output="screen" >
+        <rosparam command="load" file="$(find asuqtr_control_node)/params/actuators_mock_signal.yaml" />
+        <rosparam command="load" file="$(find asuqtr_control_node)/params/cost_matrix.yaml" />
+        <rosparam command="load" file="$(find asuqtr_control_node)/params/game_pad_parameters.yaml" />
+        <rosparam command="load" file="$(find asuqtr_control_node)/params/limits_n_thresholds.yaml" />
+        <rosparam command="load" file="$(find asuqtr_control_node)/params/lqr_enabled_on_start.yaml" />
+    </node>	
+    
+    <!--### ASUQTR SENSOR NODE ###-->
+    <node pkg="asuqtr_sensor_node" type="sensor_node.py" name="sensor_node" output="screen" />
+    
+    <!--### ASUQTR IMU NODE ###-->
+    <include file="$(find vectornav)/launch/vectornav.launch"/>
+
+    <!-- FIXME: web page node necessary ? -->
+    <!--### ROSBRIDGE NODE FOR WEB PAGE ###-->
+    <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch"/>
+
+    <!--### ASUQTR ACTUATOR NODE ###-->
+    <include file="$(find asuqtr_actuator_node)/launch/actuator_node.launch"/>
+
+    <!--### ASUQTR DVL NODE ###-->
+    <include file="$(find asuqtr_dvl_node)/launch/dvl_node.launch"/>
+
+    <!--### ASUQTR NAVIGATION NODE ###-->
+    <include file="$(find asuqtr_nav_node)/launch/nav_node.launch"/>
+    
+</launch>

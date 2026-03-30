@@ -1,0 +1,38 @@
+##### Common python packages #####
+kiwisolver
+matplotlib
+numpy
+scipy
+
+# Fix for colcon build compatibility on Ubuntu 20.04 (Python 3.8)
+setuptools==58.2.0
+
+##### actuator_node #####
+adafruit-circuitpython-pca9685
+adafruit-blinka
+adafruit-circuitpython-motor
+
+##### sensor_node #####
+smbus2
+
+##### gpio_node #####
+Jetson.GPIO
+
+##### power_node #####
+pyserial
+
+##### asuqtr_restful_api #####
+Flask~=1.1.2
+flask-cors~=3.0.9
+
+##### dvl_node ######
+crcmod
+
+#### Flexbe webui ####
+fastapi>=0.109.1
+pydantic>=1.10.13
+websockets>=10.3
+MarkupSafe==2.0.1
+uvicorn
+
+

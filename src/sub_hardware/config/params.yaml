@@ -1,0 +1,49 @@
+actuator_node:
+  ros__parameters:
+    # PCA9685 reference clock speed. Found experimentally with Adafruit's script 
+    # (see /scriptssrc/sub_hardware/scripts/tune_pca.py) for PCA9685 to ensure accurate PWM
+    pca_ref_clk_speed: 24821760
+    
+    # User-defined PWM offset to fix electrical noise that causes PWM drift from thrusters
+    # Must be in range [-0.15, 0.15]. This represents Thrusters throttle
+    thruster_throttle_offset: 0.0
+    
+    # Allows to disable watchdog that set thrusters to a safe value. This must always be enabled 
+    # in normal operation for safety, unless you have a specific testing usecase
+    enable_thrusters_watchdog: true
+
+dvl_node:
+  ros__parameters:
+    # DVL A50 parameters
+    serial_port_name : "/dev/ttyTHS0" # Default Xavier name is ttyTHS0 for DVL serial
+
+gpio_node:
+  ros__parameters:
+    # INPUT Hardware pins 
+    kill_switch_pin: 36
+    magnetic_switch2_pin: 38
+    magnetic_switch3_pin: 40
+    signal_leak_pin: 7
+    alert_temp_pin: 15
+
+    # OUTPUT Hardware pins
+    main_pod_fans_pin: 16
+    disable_pwms_pin: 11
+
+    # Debounce time for switches in milliseconds
+    kill_switch_debounce_time: 200
+    mag_switch2_debounce_time: 200
+    mag_switch3_debounce_time: 200
+
+sonar_node:
+  ros__parameters:
+    # Define speed of sound in pure water (m/s)
+    speed_of_sound: 1481
+
+    # Define range (m)
+    ping_range: 50
+
+    # Execution modes (possibilities are: sending image and/or sending raw data and/or service exposition)
+    mode: "automatic"  # [automatic, service]
+    image_send_mode: true
+    raw_data_send_mode: true

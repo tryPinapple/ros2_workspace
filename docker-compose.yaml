@@ -1,0 +1,49 @@
+services:
+  # ==========================================
+  # 1. ASUQTR CORE (Control, Autonomy, Hardware)
+  # ==========================================
+  sub_control_core:
+    # TODO add docker repository prefix to image when repository server available
+    image: asuqtr_ros2:v1.0
+    container_name: asuqtr_ros2
+    runtime: nvidia
+    privileged: true
+    network_mode: "host"
+    shm_size: "1gb"
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    volumes:
+      - /tmp/argus_socket:/tmp/argus_socket
+      - /dev:/dev
+      - ./:/workspace
+
+  # ==========================================
+  # 2. ASUQTR DASHBOARD
+  # ==========================================
+  asuqtr-dashboard:
+    # TODO add docker repository prefix to image when repository server available
+    image: asuqtr-dashboard:latest
+    container_name: asuqtr-dashboard
+    ports:
+        - "80:80"
+    depends_on:
+        - asuqtr_ros2
+
+  # ==========================================
+  # 3. ASUQTR VISION
+  # ==========================================
+  # TODO uncomment this container once the image is available on a docker repository
+  # sub_vision_pipeline:
+  #   image: isaac_asuqtr_vision:v1.0
+  #   container_name: asuqtr_vision
+  #   runtime: nvidia
+  #   network_mode: "host"
+  #   pull_policy: missing 
+  #   stdin_open: true
+  #   tty: true
+  #   restart: unless-stopped
+  #   volumes:
+  #     # Hardcoded, deterministic mount mapping
+  #     - ~/sub_vision_workspace/src:/workspaces/isaac_ros-dev/src
+  #     - /tmp/argus_socket:/tmp/argus_socket

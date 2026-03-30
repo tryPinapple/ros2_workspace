@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<launch>
+
+    
+
+    <!--### ASUQTR CONTROL NODE ###-->
+    <node pkg="asuqtr_control_node" type="control_node.py" name="control_node" output="screen" >
+        <rosparam command="load" file="$(find asuqtr_control_node)/params/limits_n_thresholds.yaml" />
+        <rosparam command="load" file="$(find asuqtr_control_node)/params/cost_matrix.yaml" />
+    </node>
+
+    <!--### ASUQTR SENSOR NODE ###-->
+    <node pkg="asuqtr_sensor_node" type="sensor_node.py" name="sensor_node" output="screen" />
+
+
+
+    <!--### ASUQTR IMU NODE ###-->
+    <include file="$(find vectornav)/launch/vectornav.launch"/>
+
+
+     <!--### ROSBRIDGE NODE FOR WEB PAGE ###-->
+    <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch"/>
+
+
+    <!--### ASUQTR ACTUATOR NODE ###-->
+    <node pkg="asuqtr_actuator_node" type="actuator_node.py" name="actuator_node" output="screen">
+        <rosparam command="load" file="$(find asuqtr_actuator_node)/params/standard_setup.yaml" />
+    </node>
+
+
+
+    <!--### ASUQTR DVL NODE ###-->
+    <node pkg="asuqtr_dvl_node" type="dvl_node.py" name="dvl_node" output="screen">
+        <rosparam command="load" file="$(find asuqtr_dvl_node)/params/dvl_xavier_conf.yaml" />
+    </node>
+
+    <!--### ASUQTR NAV NODE ###-->
+    <node pkg="asuqtr_nav_node" type="nav_node.py" name="nav_node" output="screen" >
+        <rosparam command="load" file="$(find asuqtr_nav_node)/params/dead_reckoning_config.yaml" />
+    </node>
+
+    <!--### FLEXBE ENGINE AND LAUNCHER ###-->
+    <node pkg="flexbe_widget" type="be_launcher" name="behavior_launcher" output="log" />
+    <node name="behavior_mirror" pkg="flexbe_mirror" type="behavior_mirror_sm" output="log" />
+    <include file="$(find flexbe_onboard)/launch/behavior_onboard.launch"/>
+
+</launch>

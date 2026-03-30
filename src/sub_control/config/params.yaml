@@ -1,0 +1,22 @@
+# config/control_params.yaml
+control_node:
+  ros__parameters:
+    # Execution Mode: 'behavior', 'lqr_tuning', or 'manual'
+    control_mode: "lqr_tuning"
+    
+    # Q MATRIX (State Error Cost): Penalizes being away from the target.
+    #  Higher Q = "Get to the target immediately." This increases overall output force.
+    #    - Position Q (Indices 0-2): Acts like a Spring. Pulls the Sub to the target.
+    #    - Angle Q (Indices 3-5): Acts like a Torsional Spring. Snaps heading.
+    #    - Velocity Q (Indices 6-11): Acts like a Damper (Shock Absorber). 
+     #     High velocity Q forces the Sub to brake smoothly to avoid overshoot.
+    state_cost_matrix: [0.5, 0.5, 0.5, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    
+    # R MATRIX (Thruster Cost): Penalizes using thruster energy. 
+    #  Higher R = "Save battery, thrust is expensive." This lowers overall output force.
+    thruster_cost_matrix: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+    # Determines the minimum % at which joystick are detected.
+    # 0.1 means 10% of the joystick will be ignored
+    # Increase the value if your joysticks are loose and cause unwanted movements
+    joy_dead_zone: 0.2

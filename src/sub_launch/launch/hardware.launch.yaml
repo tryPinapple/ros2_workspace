@@ -1,0 +1,49 @@
+launch:
+	
+	# load script arguments, fallback to default
+  - arg:
+      name: "urdf_file"
+      default: "$(find-pkg-share sub_launch)/urdf/sub.urdf"
+
+  # Sub Hardware (Actuators & Sensors)
+  - node:
+      pkg: "sub_hardware"
+      exec: "actuator_node"
+      name: "actuator_node"
+      param:
+        - from: "$(find-pkg-share sub_hardware)/config/params.yaml"
+	
+	- node:
+      pkg: "sub_hardware"
+      exec: "sensor_node"
+      name: "sensor_node"
+      param:
+        - from: "$(find-pkg-share sub_hardware)/config/params.yaml"
+  
+  - node:
+      pkg: "sub_hardware"
+      exec: "gpio_node"
+      name: "gpio_node"
+      param:
+        - from: "$(find-pkg-share sub_hardware)/config/params.yaml"
+  
+  - node:
+      pkg: "sub_hardware"
+      exec: "dvl_node"
+      name: "dvl_node"
+      param:
+        - from: "$(find-pkg-share sub_hardware)/config/params.yaml"
+
+	- node:
+      pkg: "vectornav"
+      exec: "vectornav"
+      name: "vectornav_node"
+      param:
+        - from: "$(find-pkg-share vectornav)/config/vectornav.yaml"
+  
+	  # Start ROSbridge for ASUQTR dashboard interaction
+  - node:
+      pkg: "rosbridge_server"
+      exec: "rosbridge_websocket"
+      name: "rosbridge_websocket"
+      # Default port is 9090. You can override it here if needed.

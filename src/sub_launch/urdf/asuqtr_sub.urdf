@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<robot name="sub">
+
+  <link name="base_link">
+    </link>
+
+  <link name="vectornav_imu">
+  </link>
+
+  <link name="dvl_link">
+  </link>
+
+  <link name="bar30_link">
+  </link>
+
+  <joint name="base_to_vectornav_imu" type="fixed">
+    <parent link="base_link"/>
+    <child link="vectornav_imu"/>
+    
+    <origin xyz="0.00 0.0 -0.0475" rpy="3.14159 0.0 0.0"/>
+  </joint>
+
+  <joint name="base_to_dvl" type="fixed">
+    <parent link="base_link"/>
+    <child link="dvl_link"/>
+    
+    <origin xyz="0.0 0.0 -0.15" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+
+  <joint name="base_to_bar30" type="fixed">
+    <parent link="base_link"/>
+    <child link="bar30_link"/>
+    
+    <origin xyz="0.0 0.0 0.0525" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+</robot>

@@ -1,0 +1,127 @@
+ekf_filter_node:
+  ros__parameters:
+    # -----------------------------------------------------------
+    # Core Node Settings
+    # -----------------------------------------------------------
+    frequency: 25.0
+    sensor_timeout: 0.00
+    two_d_mode: false
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+    print_diagnostics: true
+    debug: false
+    publish_tf: true
+    publish_acceleration: false
+
+    # -----------------------------------------------------------
+    # Coordinate Frames
+    # -----------------------------------------------------------
+    # We leave map as "map" but set world_frame to "odom" since 
+    # the Sub has no absolute global positioning (GPS) to tie to a map.
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+
+    # -----------------------------------------------------------
+    # Sensor 0: VectorNav VN-100 (sensor_msgs/msg/Imu)
+    # -----------------------------------------------------------
+    imu0: vectornav/imu
+    
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    imu0_config: [false, false, false,
+                  true,  true,  true,  # Absolute EKF Quaternions
+                  false, false, false,
+                  true,  true,  true,  # Bias-Free Angular Velocities
+                  false,  false,  false]  # Gravity-Free Linear Accelerations (from attitudeField)
+
+    imu0_nodelay: false
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    
+    # CRITICAL: Set to false because IMU firmware already removed the 9.81 m/s^2
+    imu0_remove_gravitational_acceleration: false
+
+    # -----------------------------------------------------------
+    # Sensor 1: Doppler Velocity Log (geometry_msgs/msg/TwistWithCovarianceStamped)
+    # -----------------------------------------------------------
+    twist0: dvl/velocities
+    
+    # A DVL measures acoustic Doppler shift to provide highly accurate 
+    # linear velocities in the water column or against the sea floor.
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    twist0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  true,  # DVL Linear Velocities (Body Frame)
+                   false, false, false,
+                   false, false, false]
+                   
+    twist0_differential: false
+    twist0_relative: false
+    twist0_queue_size: 10
+    
+    # -----------------------------------------------------------
+    # Sensor 2: bar30 depth sensor (nav_msgs/msg/Odometry)
+    # -----------------------------------------------------------
+    odom0: depth
+    
+    # A DVL measures acoustic Doppler shift to provide highly accurate 
+    # linear velocities in the water column or against the sea floor.
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    odom0_config: [false, false, true,   # Depth (World Frame)
+                   false, false, false,
+                  false,  false,  false, 
+                   false, false, false,
+                   false, false, false]
+                   
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+    
+    # -----------------------------------------------------------
+    # Covariance Matrices
+    # -----------------------------------------------------------
+    dynamic_process_noise_covariance: true
+
+    # Process Noise Covariance (Matrix Q)
+    # The EKF's uncertainty in its own Newtonian physics predictions.
+    # Velocities (indices 6,7,8) are slightly elevated to account for water drag and currents.
+    process_noise_covariance: [
+      0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.06, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.06, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.025,0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, # Vx
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.025,0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0, # Vy
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.04, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0, # Vz
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.02, 0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.015
+    ]
+
+    # Initial Estimate Covariance (Matrix P0)
+    # We are absolutely certain the Sub starts at (0,0,0) in the odom frame.
+    # We are slightly less certain about the starting orientation before the IMU converges.
+    initial_estimate_covariance: [
+      1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  1e-1, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9
+    ]

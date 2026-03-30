@@ -1,0 +1,30 @@
+# --- ROS 2 Build Artifacts ---
+build/
+install/
+log/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.tox/
+.venv/
+venv/
+ENV/
+
+# --- VS Code ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+
+# --- C++ (If any hybrid packages exist) ---
+*.swp
+*.o
+*.so
