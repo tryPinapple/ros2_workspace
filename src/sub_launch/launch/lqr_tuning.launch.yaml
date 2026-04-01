@@ -11,6 +11,10 @@ launch:
       name: "control_node"
       param:
         - from: "$(find-pkg-share sub_control)/config/params.yaml"
+  - node:
+      pkg: "sub_control"
+      exec: "lqr_tuning.py"
+      name: "lqr_tuning"
 
   # The TF Tree (Loads Sub geometry geometry)
   - node:
