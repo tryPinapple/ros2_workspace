@@ -20,6 +20,7 @@ ament_python_install_package(${PROJECT_NAME})
 # or you can point directly to the python files inside your module.
 install(PROGRAMS
   scripts/control_node.py
+  scripts/lqr_tuning.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
