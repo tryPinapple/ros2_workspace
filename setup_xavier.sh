@@ -145,7 +145,6 @@ EOF
 systemctl start docker
 echo "Docker data-root updated to $MOUNT_POINT/docker."
 usermod -aG docker "$REAL_USER"
-newgrp docker
 
 # Refenrence to this https://nvidia-isaac-ros.github.io/v/release-2.1/getting_started/dev_env_setup.html
 sudo apt-get install git-lfs
