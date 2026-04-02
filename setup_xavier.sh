@@ -160,7 +160,7 @@ echo "Deploying Sub container infrastructure..."
 docker build -t asuqtr_ros2:latest .
 
 # Build ASUQTR Dashboard docker image
-sudo -u "$REAL_USER" git clone "https://gitea.asuqtr.com/SousMarinASUQTR/asuqtr_dashboard.git" "~/asuqtr_dashboard"
+sudo -u "$REAL_USER" git clone "https://github.com/ASUQTR/dashboard.git" "~/asuqtr_dashboard"
 cd ~/asuqtr_dashboard
 docker build -t asuqtr-dashboard:latest .
 

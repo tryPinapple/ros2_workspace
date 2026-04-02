@@ -91,7 +91,7 @@ For software development and simulation, we use Docker. The included `docker-com
    ```
 2. If the containers are not started :
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 ### 💻 Opening a Shell Into `asuqtr_ros2` Container
 Use either of :
