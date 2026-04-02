@@ -28,6 +28,8 @@ In the following architecture diagram, __BLACK__ icons are ASUQTR nodes/custom c
 ## System Deployment
 To ensure consistency across the team and the physical robot, this project is fully containerized using Docker, with built-in support for the ASUQTR Web Dashboard via `rosbridge`.
 
+### **TODO** add diagram 
+
 ---
 
 ## <a id="ssh"></a>🔌 0. Connect to the Jetson Xavier (SSH)
