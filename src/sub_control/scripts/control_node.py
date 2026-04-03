@@ -17,6 +17,7 @@ import math
 import numpy as np
 from enum import IntEnum
 import time
+from scipy.spatial.transform import Rotation as R
 
 # ==========================================
 # ROS 2 IMPORTS
@@ -168,6 +169,24 @@ class ControlNode(Node):
         self.last_mode_switch_button_state = False
         self.get_logger().info("Sub Control Node Initialized.")
 
+        # ---------------------------------------------------------
+        # STATIC FRAME TRANSFORMATION MATRICES
+        # ---------------------------------------------------------
+        # Maps ENU vectors (East, North, Up) to NED vectors (North, East, Down)
+        # X_ned = Y_enu, Y_ned = X_enu, Z_ned = -Z_enu
+        self.M_ned_enu = np.array([
+            [ 0.0,  1.0,  0.0],
+            [ 1.0,  0.0,  0.0],
+            [ 0.0,  0.0, -1.0]
+        ])
+
+        # Maps FLU vectors (Fwd, Left, Up) to FRD vectors (Fwd, Right, Down)
+        # X_frd = X_flu, Y_frd = -Y_flu, Z_frd = -Z_flu
+        self.M_frd_flu = np.array([
+            [ 1.0,  0.0,  0.0],
+            [ 0.0, -1.0,  0.0],
+            [ 0.0,  0.0, -1.0]
+        ])
 
     # ==========================================
     # PARAMETER HANDLING
@@ -289,52 +308,53 @@ class ControlNode(Node):
     def localization_callback(self, msg):
         """
         Process incoming localization data, update state, and trigger the LQR solver.
-        
-        This is the heartbeat of the controller. It executes entirely synchronously 
-        to guarantee zero phase-lag between sensor reception and thruster command output.
-        
-        Args:
-            msg (Odometry): The incoming filtered odometry message.
         """
-        # Start the profiling stopwatch
+        import time
         start_time = time.perf_counter()
-        
-        roll_flu, pitch_flu, yaw_flu = self.quaternion_to_euler(
+
+        # ----------------------------------------------------------------------
+        # ORIENTATION (Quaternion Sandwich Math)
+        # ----------------------------------------------------------------------
+        # Load ROS orientation (FLU w.r.t ENU) into SciPy Rotation object
+        # Note: SciPy strictly expects quaternions in [x, y, z, w] order
+        quat_ros = [
             msg.pose.pose.orientation.x,
             msg.pose.pose.orientation.y,
             msg.pose.pose.orientation.z,
             msg.pose.pose.orientation.w
-        )
+        ]
+        R_enu_flu = R.from_quat(quat_ros).as_matrix()
+
+        # Apply the frame transformations: R_ned_frd = M_ned_enu * R_enu_flu * M_frd_flu
+        R_ned_frd_mat = self.M_ned_enu @ R_enu_flu @ self.M_frd_flu
+
+        # Extract intrinsic Z-Y-X Euler angles from the correctly oriented matrix
+        # 'zyx' corresponds to Yaw, Pitch, Roll. It handles bounds safely.
+        yaw_ned, pitch_ned, roll_ned = R.from_matrix(R_ned_frd_mat).as_euler('zyx', degrees=False)
 
         # ----------------------------------------------------------------------
-        # FRAME TRANSLATION: ROS ENU/FLU to Marine NED/FRD
-        # ROS strictly uses East-North-Up (World) and Forward-Left-Up (Body).
-        # Our physical LQR math model assumes North-East-Down (World) and 
-        # Forward-Right-Down (Body). We intercept and translate them here.
+        # POSITION & VELOCITY (Vector Projection)
         # ----------------------------------------------------------------------
-        
-        # Update the pre-allocated current_state array IN-PLACE (zero-copy overhead)
-        
-        # World Frame: ENU -> NED
-        self.current_state[0] = msg.pose.pose.position.y     # X becomes North (Y)
-        self.current_state[1] = msg.pose.pose.position.x     # Y becomes East (X)
-        self.current_state[2] = -msg.pose.pose.position.z    # Z is inverted (Down)
-        self.current_state[3] = roll_flu
-        self.current_state[4] = -pitch_flu                   # Pitch is inverted
-        
-        # Shift Yaw 90 degrees so 0 Rad faces North instead of East
-        yaw_ned = (math.pi / 2.0) - yaw_flu
-        self.current_state[5] = (yaw_ned + math.pi) % (2 * math.pi) - math.pi
+        pos_enu = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z])
+        vel_lin_flu = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.linear.z])
+        vel_ang_flu = np.array([msg.twist.twist.angular.x, msg.twist.twist.angular.y, msg.twist.twist.angular.z])
 
-        # Body Frame: FLU -> FRD (Velocities)
-        self.current_state[6] = msg.twist.twist.linear.x
-        self.current_state[7] = -msg.twist.twist.linear.y    # Left to Right
-        self.current_state[8] = -msg.twist.twist.linear.z    # Up to Down
-        self.current_state[9] = msg.twist.twist.angular.x
-        self.current_state[10] = -msg.twist.twist.angular.y  # Pitch to -Pitch
-        self.current_state[11] = -msg.twist.twist.angular.z  # Yaw to -Yaw
-        
-        # --- Target State Management ---
+        # Project vectors into target frames using the static matrices
+        pos_ned = self.M_ned_enu @ pos_enu
+        vel_lin_frd = self.M_frd_flu @ vel_lin_flu
+        vel_ang_frd = self.M_frd_flu @ vel_ang_flu
+
+        # ----------------------------------------------------------------------
+        # UPDATE STATE IN-PLACE
+        # ----------------------------------------------------------------------
+        self.current_state[0:3] = pos_ned
+        self.current_state[3]   = roll_ned
+        self.current_state[4]   = pitch_ned
+        self.current_state[5]   = yaw_ned
+        self.current_state[6:9] = vel_lin_frd
+        self.current_state[9:12] = vel_ang_frd
+
+        # --- Initial Target State Management ---
         with self.target_state_lock:
             # First-run initialization: If the Sub just booted, set its target 
             # coordinate to exactly where it currently is so it holds position.
