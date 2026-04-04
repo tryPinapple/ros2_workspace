@@ -27,8 +27,6 @@ services:
     container_name: asuqtr-dashboard
     ports:
         - "80:80"
-    depends_on:
-        - asuqtr_ros2
 
   # ==========================================
   # 3. ASUQTR VISION
