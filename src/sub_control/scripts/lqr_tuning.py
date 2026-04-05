@@ -3,20 +3,17 @@
 # ==========================================
 # PYTHON STANDARD & 3RD PARTY IMPORTS
 # ==========================================
-import time
-from enum import IntEnum
 import numpy as np
 import math
+from scipy.spatial.transform import Rotation as R
 
 # ==========================================
 # ROS 2 IMPORTS
 # ==========================================
 import rclpy
 from rclpy.node import Node
-from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from rclpy.duration import Duration
-from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 
 # Messages and TF2
@@ -30,10 +27,6 @@ from sensor_msgs.msg import Imu
 # ==========================================
 class LQRTuning(Node):
     def __init__(self):
-        """Initialize the node, parameters, pre-allimport numpy as np
-ocated memory, ROS publishers/Subscribers
-        callback mutex groups and TF2 buffer & frame to allow frame transfer when receiving target
-        commands """
         super().__init__('lqr_tuning')
         only_latest_qos = QoSProfile(
             depth=1,
@@ -62,21 +55,41 @@ ocated memory, ROS publishers/Subscribers
         self.euler_error_pub = self.create_publisher(
             Quaternion, 'ned_euler_error', only_latest_qos
         )
+
+        # ---------------------------------------------------------
+        # STATIC FRAME TRANSFORMATION MATRICES
+        # ---------------------------------------------------------
+        # Maps ENU vectors (East, North, Up) to NED vectors (North, East, Down)
+        # X_ned = Y_enu, Y_ned = X_enu, Z_ned = -Z_enu
+        self.M_ned_enu = np.array([
+            [ 0.0,  1.0,  0.0],
+            [ 1.0,  0.0,  0.0],
+            [ 0.0,  0.0, -1.0]
+        ])
+
+        # Maps FLU vectors (Fwd, Left, Up) to FRD vectors (Fwd, Right, Down)
+        # X_frd = X_flu, Y_frd = -Y_flu, Z_frd = -Z_flu
+        self.M_frd_flu = np.array([
+            [ 1.0,  0.0,  0.0],
+            [ 0.0, -1.0,  0.0],
+            [ 0.0,  0.0, -1.0]
+        ])
     
     def imu_callback(self, msg):
-        # 1. Get radians
-        roll_flu, pitch_flu, yaw_flu = self.quaternion_to_euler(
-            msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w
-        )
+        quat_ros = [msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w]
+        R_enu_flu = R.from_quat(quat_ros).as_matrix()
+
+        R_ned_frd_mat = self.M_ned_enu @ R_enu_flu @ self.M_frd_flu
         
-        self.imu_state[3] = roll_flu
-        self.imu_state[4] = -pitch_flu                   
+        # 1. Save the SciPy Rotation object to the class for the error calculation
+        self.R_imu_ned = R.from_matrix(R_ned_frd_mat)
+
+        yaw_ned, pitch_ned, roll_ned = self.R_imu_ned.as_euler('zyx', degrees=False)
         
-        # 2. Math is safely done in Radians
-        yaw_ned = (math.pi / 2.0) - yaw_flu
-        self.imu_state[5] = (yaw_ned + math.pi) % (2 * math.pi) - math.pi
+        self.imu_state[3] = roll_ned
+        self.imu_state[4] = pitch_ned                   
+        self.imu_state[5] = yaw_ned
         
-        # 3. Publish the NED state in Degrees for human readability
         euler_msg = Quaternion()
         euler_msg.x = math.degrees(self.imu_state[3])
         euler_msg.y = math.degrees(self.imu_state[4])
@@ -84,57 +97,48 @@ ocated memory, ROS publishers/Subscribers
         self.imu_euler_pub.publish(euler_msg)
 
     def localization_callback(self, msg):
-        # 1. Get radians
-        roll_flu, pitch_flu, yaw_flu = self.quaternion_to_euler(
-            msg.pose.pose.orientation.x, msg.pose.pose.orientation.y,
-            msg.pose.pose.orientation.z, msg.pose.pose.orientation.w
-        )
+        quat_ros = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
+        R_enu_flu = R.from_quat(quat_ros).as_matrix()
+
+        R_ned_frd_mat = self.M_ned_enu @ R_enu_flu @ self.M_frd_flu
         
-        self.filtered_state[3] = roll_flu
-        self.filtered_state[4] = -pitch_flu                   
+        # 1. Save the SciPy Rotation object
+        self.R_filtered_ned = R.from_matrix(R_ned_frd_mat)
+
+        yaw_ned, pitch_ned, roll_ned = self.R_filtered_ned.as_euler('zyx', degrees=False)
         
-        # 2. Math is safely done in Radians
-        yaw_ned = (math.pi / 2.0) - yaw_flu
-        self.filtered_state[5] = (yaw_ned + math.pi) % (2 * math.pi) - math.pi
+        self.filtered_state[3] = roll_ned
+        self.filtered_state[4] = pitch_ned                   
+        self.filtered_state[5] = yaw_ned
         
-        # 3. Publish the NED state in Degrees for human readability
         euler_msg = Quaternion()
         euler_msg.x = math.degrees(self.filtered_state[3])
         euler_msg.y = math.degrees(self.filtered_state[4])
         euler_msg.z = math.degrees(self.filtered_state[5])
         self.filtered_euler_pub.publish(euler_msg)
 
-        # 4. Error in Degrees
-        euler_error_msg = Quaternion()
-        euler_error_msg.x = math.degrees(self.imu_state[3] - self.filtered_state[3])
-        euler_error_msg.y = math.degrees(self.imu_state[4] - self.filtered_state[4])
-        euler_error_msg.z = math.degrees(self.imu_state[5] - self.filtered_state[5])
-        self.euler_error_pub.publish(euler_error_msg)
-
-    @staticmethod
-    def quaternion_to_euler(x, y, z, w):
-        """ Returns Radians. """
-        t0 = +2.0 * (w * x + y * z)
-        t1 = +1.0 - 2.0 * (x * x + y * y)
-        roll = np.arctan2(t0, t1)
-
-        t2 = +2.0 * (w * y - z * x)
-        t2 = +1.0 if t2 > +1.0 else t2
-        t2 = -1.0 if t2 < -1.0 else t2
-        pitch = np.arcsin(t2)
-
-        t3 = +2.0 * (w * z + x * y)
-        t4 = +1.0 - 2.0 * (y * y + z * z)
-        yaw = np.arctan2(t3, t4)
-
-        return roll, pitch, yaw    
+        # ----------------------------------------------------------------------
+        # ERROR CALCULATION (Relative Rotation)
+        # ----------------------------------------------------------------------
+        # Ensure both objects exist before calculating
+        if hasattr(self, 'R_imu_ned') and hasattr(self, 'R_filtered_ned'):
+            
+            # R_error = Inverse(R_filtered) * R_imu
+            # SciPy Rotation objects use * for matrix multiplication
+            R_error = self.R_filtered_ned.inv() * self.R_imu_ned
+            
+            # Extract the error angles directly in degrees
+            err_yaw, err_pitch, err_roll = R_error.as_euler('zyx', degrees=True)
+            
+            euler_error_msg = Quaternion()
+            euler_error_msg.x = err_roll
+            euler_error_msg.y = err_pitch
+            euler_error_msg.z = err_yaw
+            self.euler_error_pub.publish(euler_error_msg)
 
 def main(args=None):
     rclpy.init(args=args)
     node = LQRTuning()
-    
-    # Run the node with 4 threads so Action Servers and topic Subscriptions 
-    # callbacks can process concurrently without blocking each other.
     executor = SingleThreadedExecutor() 
     executor.add_node(node)
     

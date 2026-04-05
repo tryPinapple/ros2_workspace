@@ -6,15 +6,15 @@ control_node:
     
     # Q MATRIX (State Error Cost): Penalizes being away from the target.
     #  Higher Q = "Get to the target immediately." This increases overall output force.
-    #    - Position Q (Indices 0-2): Acts like a Spring. Pulls the Sub to the target.
-    #    - Angle Q (Indices 3-5): Acts like a Torsional Spring. Snaps heading.
-    #    - Velocity Q (Indices 6-11): Acts like a Damper (Shock Absorber). 
+    #    - Position Q (Indices 0-2 -> x,z,z): Acts like a Spring. Pulls the Sub to the target.
+    #    - Angle Q (Indices 3-5 -> r,p,y): Acts like a Torsional Spring. Snaps heading.
+    #    - Velocity Q (Indices 6-11-> vx, vy, vz, vroll, vpitch, vyaw): Acts like a Damper (Shock Absorber). 
      #     High velocity Q forces the Sub to brake smoothly to avoid overshoot.
-    state_cost_matrix: [0.5, 0.5, 0.5, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    state_cost_matrix: [0.5, 0.5, 0.5, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0]
     
     # R MATRIX (Thruster Cost): Penalizes using thruster energy. 
     #  Higher R = "Save battery, thrust is expensive." This lowers overall output force.
-    thruster_cost_matrix: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    thruster_cost_matrix: [0.01, 0.01, 0.04, 0.04, 0.04, 0.04, 0.01, 0.01]
 
     # Determines the minimum % at which joystick are detected.
     # 0.1 means 10% of the joystick will be ignored
