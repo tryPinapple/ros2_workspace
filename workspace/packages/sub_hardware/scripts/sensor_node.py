@@ -19,7 +19,7 @@ import time
 
 # Third-party library for the MS5837 pressure sensor (Bar30)
 # Ensure this module is available in your workspace or system Python path.
-from sub_hardware.ms5837 import MS5837_30BA, OSR_4096, DENSITY_FRESHWATER
+from workspace.packages.sub_hardware.sub_hardware.ms5837 import MS5837_30BA, OSR_4096, DENSITY_FRESHWATER
 
 # -----------------------------------------------------------------------------
 # Node Configuration Constants

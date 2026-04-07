@@ -42,7 +42,7 @@ import tf2_ros
 # ==========================================
 # ASUQTR IMPORTS
 # ==========================================
-from sub_control.lqr_solver import SubLQRSolver, THRUST_ALLOC_MAT
+from workspace.packages.sub_control.sub_control.lqr_solver import SubLQRSolver, THRUST_ALLOC_MAT
 
 # Default cost matrix parameter values for LQR controller
 # Q: State error penalties (Position/Angle springs and Velocity dampers)

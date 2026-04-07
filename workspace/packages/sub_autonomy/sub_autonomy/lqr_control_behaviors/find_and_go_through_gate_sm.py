@@ -8,8 +8,8 @@
 ###########################################################
 
 from flexbe_core import Behavior, Autonomy, OperatableStateMachine, ConcurrencyContainer, PriorityContainer, Logger
-from lqr_control_behaviors.go_to_object_at_camera_size_sm import Go_to_object_at_camera_sizeSM
-from lqr_control_behaviors.turn_and_find_object_sm import Turn_and_find_objectSM
+from workspace.packages.sub_autonomy.sub_autonomy.lqr_control_behaviors.go_to_object_at_camera_size_sm import Go_to_object_at_camera_sizeSM
+from workspace.packages.sub_autonomy.sub_autonomy.lqr_control_behaviors.turn_and_find_object_sm import Turn_and_find_objectSM
 from lqr_control_states.time_x_forward_backward import TimeXForwardBackward
 # Additional imports can be added inside the following tags
 # [MANUAL_IMPORT]

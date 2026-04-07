@@ -9,7 +9,7 @@
 
 from flexbe_core import Behavior, Autonomy, OperatableStateMachine, ConcurrencyContainer, PriorityContainer, Logger
 from camera_states.object_screen_percent import ObjectScreenPercent
-from lqr_control_behaviors.center_object_in_camera_middle_sm import Center_object_in_camera_middleSM
+from workspace.packages.sub_autonomy.sub_autonomy.lqr_control_behaviors.center_object_in_camera_middle_sm import Center_object_in_camera_middleSM
 from lqr_control_states.time_x_forward_backward import TimeXForwardBackward
 # Additional imports can be added inside the following tags
 # [MANUAL_IMPORT]
