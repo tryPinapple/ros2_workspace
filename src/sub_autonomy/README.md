@@ -1,61 +1,95 @@
-ASUQTR Mission Management
-====================
+# FlexBE States and Behaviors for asuqtr
 
-The main entry point of all the ROS package for ASUQTR. It contains launch files designed to start 2 possible runtime 
-setups :
-* Jetson device setup  _(ideal setup, requires a jetson device)_
-* Standard PC setup  _(alternative setup when you do not have access to a jetson device)_
+Generic template for a behaviors repository to be used for new projects
 
-This package also contains various nodes to help achieve management of missions for the RoboSub competition.
+Modify this README as needed for your specific project details.
 
-QuickStart Guide
-----------------
+Below we provide basic details, but you are free to delete or modify this README as you wish.
 
-####Requirements:
-1. A Nvidia Jetson device or standard PC with ROS for ASUQTR installed:
-[How to Install ROS for ASUQTR](https://confluence.asuqtr.com/display/SUBUQTR/How+to+install+ROS+for+ASUQTR)
+----
 
-#### Standard PC setup (without nodes requiring hardware buses):
-
-* <pre><code>roslaunch asuqtr_mission_management pc.launch</code></pre>
-* **Ctrl+C** to quit
-
-#### Jetson device setup:
-* <pre><code>roslaunch asuqtr_mission_management jetson.launch</code></pre>
-* **Ctrl+C** to quit
+This raw repository has several folders and files with the generic name `asuqtr`.
 
 
-ASUQTR-Dashboard
---------
-When using any of those 2 setups, you'll want to use the ASUQTR-Dashboard to gain access well presented feedback
-from components of the whole AUV's system. To do so :
+This repository is used by the FlexBE widget 
+[`create_repo`](https://github.com/FlexBE/flexbe_behavior_engine/blob/ros2-devel/flexbe_widget/bin/create_repo) 
+script to create an example project that you can build off of to add your own states and behaviors.  
 
-1. Reach the ASUQTR-Dashboard by typing **localhost** or your **machine's IP address** in your web browser
-2. Plug in your Xbox/Logitech/PS4 controller and have fun
+Using `ros2 run flexbe_widget create_repo <my_new_project_name>` will clone this repository, 
+and change the relevant `asuqtr` text to `my_new_project_name` as needed.
 
-_Note: As you will see on the Dashboard, there is an alternative (and more convinient) way to start the whole ASUQTR 
-ROS system, which is the ROS START button_
+It sets up the `package.xml` files with proper FlexBE export tags.
+It is maintained at version `0.0.1` as the starting point for your work.
 
-Overview 
---------
+We have provided a license file to conform to ROS guidelines; however, you are free to replace the 
+`LICENSE` file, and apply whatever license you choose to states and behaviors that you create.
 
-#### manual_mode node
-This node acts as a manager for the Xbox controller commands sent through the ASUQTR-dashboard. 
-It allows multiple useful functions for pool testing :
-* Enable/Disable LQR control for tuning and safety kill switch
-* Allow raw throttle commands when LQR control is disabled
-* Kill switch for the currently running autonomous behavior
+This repository contains an example behavior and examples for writing your own state implementations.
 
-#### mission_management node
-*not implemented yet, shall be used as a top layer to launch mission_behaviors*
+## Example States in `asuqtr_flexbe_states`
 
-#### testing_mode.yaml
-This file contains parameters for the node which are loaded on runtime. Usually, you only need to change these values in real life testing with the AUV.
+Packages providing FlexBE states are identified by an export tag in the `package.xml`:
 
-Example values contained in this file are :
+```xml
+  <export>
+      <flexbe_states />
+      <build_type>ament_cmake</build_type>
+  </export>
+```
 
-* behavior running on launch (Bool)
+* `example_state.py `
+  * Example state implementation with extra console logging to show the state life cycle.
 
-* angular speed factor for manual mode (coefficient)
+* `example_action_state.py`
 
-* joystick dead zone for controller error (coefficient)
+> Note: These example states are defined with extra console logging that is useful when learning FlexBE, 
+> but you will typically not include so much of the `Logger.info` commands as in these examples.
+
+> Note: You are free to copy and modify these files to create your own files and publish under your own license terms.
+> As per the existing licenses, no warranty is implied.
+
+## Example Behaviors in `asuqtr_flexbe_behaviors`
+
+Packages providing FlexBE behaviors are identified by an export tag in the `package.xml`:
+
+```xml
+  <export>
+      <flexbe_behaviors />
+      <build_type>ament_cmake</build_type>
+  </export>
+```
+
+  * `example_behavior_sm.py`
+    * Most basic example state machine
+
+  * `example_action_behavior_sm.py` 
+    * Uses the `ExampleActionState` with the standard action tutorials 
+
+        [Understanding ROS2 Actions](https://docs.ros.org/en/iron/Tutorials/Beginner-CLI-Tools/Understanding-ROS2-Actions/Understanding-ROS2-Actions.html)
+
+        [Introducing Turtlesim](https://docs.ros.org/en/iron/Tutorials/Beginner-CLI-Tools/Introducing-Turtlesim/Introducing-Turtlesim.html)
+        
+        To execute the associated behavior in FlexBE, you need to first run the turtlesim node that provdes the action server
+
+        `ros2 run turtlesim turtlesim_node`
+        
+        To display the available actions:
+
+        `ros2 action list`
+        
+        The action is defined by:
+
+        `/turtle1/rotate_absolute:` [`turtlesim/action/RotateAbsolute`](https://docs.ros2.org/latest/api/turtlesim/action/RotateAbsolute.html)
+
+Behaviors typically edited and generated by the FlexBE UI.  
+These generated files are stored in the root workspace `install` folder.
+Presuming a `WORKSPACE_ROOT` environment variable exists, we provide a simple 
+[`copy_behavior`](asuqtr_flexbe_behaviors/bin/copy_behavior) script to copy a saved behavior 
+&mdash; both the Python implementation and manifest `.xml` file &mdash; 
+to the project source folder for long term storage.
+Use `ros2 run asuqtr_flexbe_behavior copy_behavior` to see the usage guide. 
+The script should be run from this repository's base folder.
+
+For a Quick-start and more comprehensive introduction to FlexBE, 
+see the [FlexBE Turtlesim Demonstrations](https://github.com/FlexBE/flexbe_turtlesim_demo).
+
