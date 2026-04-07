@@ -22,7 +22,7 @@ repositories:
   flexbe_behavior_engine:
     type: git
     url: https://github.com/FlexBE/flexbe_behavior_engine.git
-    version: humble
+    version: ros2-devel
   flexbe_webui:
     type: git
     url: https://github.com/FlexBE/flexbe_webui.git
