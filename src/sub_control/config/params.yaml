@@ -10,8 +10,9 @@ control_node:
     #    - Angle Q (Indices 3-5 -> r,p,y): Acts like a Torsional Spring. Snaps heading.
     #    - Velocity Q (Indices 6-11-> vx, vy, vz, vroll, vpitch, vyaw): Acts like a Damper (Shock Absorber). 
      #     High velocity Q forces the Sub to brake smoothly to avoid overshoot.
-    state_cost_matrix: [0.5, 0.5, 0.5, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0]
-    
+    state_cost_matrix: [0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0]
+    #state_cost_matrix: [0.5, 0.5, 0.5, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0]
+
     # R MATRIX (Thruster Cost): Penalizes using thruster energy. 
     #  Higher R = "Save battery, thrust is expensive." This lowers overall output force.
     thruster_cost_matrix: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
