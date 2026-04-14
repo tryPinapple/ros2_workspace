@@ -173,10 +173,16 @@ class ActuatorNode(Node):
         # --- Load ROS2 parameters ---
         self.declare_parameter('pca_ref_clk_speed', DEFAULT_REF_CLK_SPEED)
         self.declare_parameter('thruster_throttle_offset', 0.0) # Used to fix neutral drift
+        self.declare_parameter('use_flat_thruster_mapping', False)
+        self.declare_parameter('flat_thruster_gain_primary', 0.2)
+        self.declare_parameter('flat_thruster_gain_secondary', 0.1)
         self.declare_parameter('enable_thrusters_watchdog', True)
 
         pca_ref_clk_speed = self.get_parameter('pca_ref_clk_speed').value
         self.thruster_throttle_offset = self.get_parameter('thruster_throttle_offset').value
+        self.use_flat_thruster_mapping = bool(self.get_parameter('use_flat_thruster_mapping').value)
+        self.flat_thruster_gain_primary = float(self.get_parameter('flat_thruster_gain_primary').value)
+        self.flat_thruster_gain_secondary = float(self.get_parameter('flat_thruster_gain_secondary').value)
         self.thrusters_watchdog_enabled = self.get_parameter('enable_thrusters_watchdog').value
 
         # Bind dynamic ROS2 reconfigure callback to allow live tuning
@@ -281,6 +287,35 @@ class ActuatorNode(Node):
                 else:
                     successful = False
                     reason = "Type rejected: thruster_throttle_offset must be a float (double)"
+            elif param.name == 'use_flat_thruster_mapping':
+                if param.type_ == Parameter.Type.BOOL:
+                    self.use_flat_thruster_mapping = bool(param.value)
+                    self.get_logger().info(f"Flat thruster mapping set to: {self.use_flat_thruster_mapping}")
+                else:
+                    successful = False
+                    reason = "Type rejected: use_flat_thruster_mapping must be a bool"
+            elif param.name == 'flat_thruster_gain_primary':
+                if param.type_ == Parameter.Type.DOUBLE:
+                    if 0.0 <= param.value <= 1.0:
+                        self.flat_thruster_gain_primary = float(param.value)
+                        self.get_logger().info(f"Flat thruster primary gain set to: {self.flat_thruster_gain_primary}")
+                    else:
+                        successful = False
+                        reason = "Gain rejected: flat_thruster_gain_primary must be between 0.0 and 1.0"
+                else:
+                    successful = False
+                    reason = "Type rejected: flat_thruster_gain_primary must be a float (double)"
+            elif param.name == 'flat_thruster_gain_secondary':
+                if param.type_ == Parameter.Type.DOUBLE:
+                    if 0.0 <= param.value <= 1.0:
+                        self.flat_thruster_gain_secondary = float(param.value)
+                        self.get_logger().info(f"Flat thruster secondary gain set to: {self.flat_thruster_gain_secondary}")
+                    else:
+                        successful = False
+                        reason = "Gain rejected: flat_thruster_gain_secondary must be between 0.0 and 1.0"
+                else:
+                    successful = False
+                    reason = "Type rejected: flat_thruster_gain_secondary must be a float (double)"
 
         return SetParametersResult(successful=successful, reason=reason)
     
@@ -329,12 +364,28 @@ class ActuatorNode(Node):
         if self.thrusters_need_init:
             return
         
-        # np.interp handles both non-linear mapping and bounds-clipping in one optimized pass.
-        interpolated_throttles_cmd = np.interp(
-            msg.efforts, 
-            T200Thruster.known_forces_n, 
-            T200Thruster.known_api_cmds
-        )
+        efforts = np.asarray(msg.efforts, dtype=np.float64)
+
+        if self.use_flat_thruster_mapping:
+            # Temporary debug mode: ignore the non-linear curve and use a flat gain.
+            flat_gains = np.array([
+                self.flat_thruster_gain_primary,   # 0
+                self.flat_thruster_gain_primary,   # 1
+                self.flat_thruster_gain_secondary, # 2
+                self.flat_thruster_gain_secondary, # 3
+                self.flat_thruster_gain_secondary, # 4
+                self.flat_thruster_gain_secondary, # 5
+                self.flat_thruster_gain_primary,   # 6
+                self.flat_thruster_gain_primary,   # 7
+            ], dtype=np.float64)
+            interpolated_throttles_cmd = efforts * flat_gains
+        else:
+            # np.interp handles both non-linear mapping and bounds-clipping in one optimized pass.
+            interpolated_throttles_cmd = np.interp(
+                efforts,
+                T200Thruster.known_forces_n,
+                T200Thruster.known_api_cmds
+            )
         
         # Apply the user-defined electrical neutral offset to fix drifting
         offset_cmds = interpolated_throttles_cmd + self.thruster_throttle_offset

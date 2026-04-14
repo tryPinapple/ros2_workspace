@@ -17,11 +17,10 @@ import math
 import numpy as np
 from enum import IntEnum
 import time
-from scipy.spatial.transform import Rotation as R
 
 # ==========================================
 # ROS 2 IMPORTS
-# ========================================
+# ==========================================
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer
@@ -33,9 +32,10 @@ from rcl_interfaces.msg import SetParametersResult
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 
 # Messages and TF2
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Joy
+from std_msgs.msg import Float64MultiArray
 from sub_interfaces.msg import ThrusterCommand
 from sub_interfaces.action import Control
 import tf2_ros
@@ -43,13 +43,14 @@ import tf2_ros
 # ==========================================
 # ASUQTR IMPORTS
 # ==========================================
-from sub_control.lqr_solver import SubLQRSolver, THRUST_ALLOC_MAT
+from sub_control.lqr_solver import SubLQRSolver, THRUST_ALLOC_MAT, Bm
 
 # Default cost matrix parameter values for LQR controller
 # Q: State error penalties (Position/Angle springs and Velocity dampers)
-DEFAULT_Q = [0.5, 0.5, 0.5, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+DEFAULT_Q = [4*1052.4762, 4*578.7808, 4*670.0731, 4*3134.6757, 4*3959.9523, 20*1453.9726, 4*265.1124, 4*303.5306, 4*204.2912, 4*12.3207, 4*19.8116, 20*6.2442]
 # R: Thruster energy penalties (Higher = less aggressive thrust)
-DEFAULT_R = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+DEFAULT_R = [10.0, 10.0, 1000.0, 1000.0, 1000.0, 1000.0, 10.0, 10.0]
+DEFAULT_MAX_THRUSTER_FORCE = 40.0
 DEFAULT_MAX_THROTTLE = 0.8
 DEFAULT_JOY_DEAD_ZONE = 0.1
 
@@ -96,6 +97,13 @@ class ControlNode(Node):
         self.declare_parameter('control_mode', 'behavior')
         self.declare_parameter('state_cost_matrix', DEFAULT_Q)
         self.declare_parameter('thruster_cost_matrix', DEFAULT_R)
+        self.declare_parameter('publish_lqr_debug_angles', True)
+        self.declare_parameter('publish_lqr_dynamics_debug', True)
+        self.declare_parameter('debug_invert_roll', False)
+        self.declare_parameter('debug_invert_pitch', False)
+        self.declare_parameter('debug_invert_yaw', False)
+        self.declare_parameter('damping_sign', 1.0)
+        self.declare_parameter('max_thruster_force_newton', DEFAULT_MAX_THRUSTER_FORCE)
 
         # PERFORMANCE ARCHITECTURE: Pre-allocate State Arrays
         # Initializing with NaN ensures the LQR math functions won't 
@@ -108,12 +116,30 @@ class ControlNode(Node):
         self._set_mode_from_string(mode_str)
         self.update_q_matrix(self.get_parameter('state_cost_matrix').value)
         self.update_r_matrix(self.get_parameter('thruster_cost_matrix').value)
+        self.publish_lqr_debug_angles = bool(self.get_parameter('publish_lqr_debug_angles').value)
+        self.publish_lqr_dynamics_debug = bool(self.get_parameter('publish_lqr_dynamics_debug').value)
+        self.debug_invert_roll = bool(self.get_parameter('debug_invert_roll').value)
+        self.debug_invert_pitch = bool(self.get_parameter('debug_invert_pitch').value)
+        self.debug_invert_yaw = bool(self.get_parameter('debug_invert_yaw').value)
+        self.damping_sign = float(self.get_parameter('damping_sign').value)
+        self.max_thruster_force_newton = float(self.get_parameter('max_thruster_force_newton').value)
         
         # Bind dynamic reconfigure callback
         self.add_on_set_parameters_callback(self.parameter_callback)
 
         # --- Instantiate Mathematical Engine ---
         self.lqr_solver = SubLQRSolver()
+        if self.damping_sign not in (-1.0, 1.0):
+            self.get_logger().warn(
+                f"Invalid damping_sign={self.damping_sign}. Using default +1.0. Allowed values are -1.0 or 1.0."
+            )
+            self.damping_sign = 1.0
+        if self.max_thruster_force_newton <= 0.0:
+            self.get_logger().warn(
+                f"Invalid max_thruster_force_newton={self.max_thruster_force_newton}. Using default {DEFAULT_MAX_THRUSTER_FORCE}."
+            )
+            self.max_thruster_force_newton = DEFAULT_MAX_THRUSTER_FORCE
+        self.lqr_solver.set_damping_sign(self.damping_sign)
         
         # --- Thread Safety & State ---
         # The Action Server thread can update the target_state at the exact 
@@ -159,9 +185,17 @@ class ControlNode(Node):
         self.thruster_pub = self.create_publisher(
             ThrusterCommand, 'thruster_cmd', only_latest_qos
         )
-
-        self.lqr_error_pub = self.create_publisher(
-            Pose, 'lqr_error', only_latest_qos
+        self.lqr_debug_pub = self.create_publisher(
+            Float64MultiArray, 'debug/lqr_angles', only_latest_qos
+        )
+        self.lqr_velocity_pub = self.create_publisher(
+            Float64MultiArray, 'debug/lqr_velocity', only_latest_qos
+        )
+        self.lqr_accel_cmd_pub = self.create_publisher(
+            Float64MultiArray, 'debug/lqr_accel_cmd', only_latest_qos
+        )
+        self.lqr_dynamics_pub = self.create_publisher(
+            Float64MultiArray, 'debug/lqr_dynamics', only_latest_qos
         )
 
         # --- Action Server ---
@@ -172,25 +206,14 @@ class ControlNode(Node):
 
         self.last_mode_switch_button_state = False
         self.get_logger().info("Sub Control Node Initialized.")
+        self.get_logger().info(
+            f"LQR debug angles pub: {self.publish_lqr_debug_angles} | "
+            f"LQR dynamics debug pub: {self.publish_lqr_dynamics_debug} | "
+            f"invert R/P/Y: {self.debug_invert_roll}/{self.debug_invert_pitch}/{self.debug_invert_yaw} | "
+                        f"damping_sign: {self.damping_sign} | "
+                        f"max_thruster_force_newton: {self.max_thruster_force_newton}"
+        )
 
-        # ---------------------------------------------------------
-        # STATIC FRAME TRANSFORMATION MATRICES
-        # ---------------------------------------------------------
-        # Maps ENU vectors (East, North, Up) to NED vectors (North, East, Down)
-        # X_ned = Y_enu, Y_ned = X_enu, Z_ned = -Z_enu
-        self.M_ned_enu = np.array([
-            [ 0.0,  1.0,  0.0],
-            [ 1.0,  0.0,  0.0],
-            [ 0.0,  0.0, -1.0]
-        ])
-
-        # Maps FLU vectors (Fwd, Left, Up) to FRD vectors (Fwd, Right, Down)
-        # X_frd = X_flu, Y_frd = -Y_flu, Z_frd = -Z_flu
-        self.M_frd_flu = np.array([
-            [ 1.0,  0.0,  0.0],
-            [ 0.0, -1.0,  0.0],
-            [ 0.0,  0.0, -1.0]
-        ])
 
     # ==========================================
     # PARAMETER HANDLING
@@ -221,6 +244,38 @@ class ControlNode(Node):
                     return SetParametersResult(successful=True)
                 else:
                     return SetParametersResult(successful=False, reason='Invalid R matrix')
+            elif param.name == 'publish_lqr_debug_angles':
+                self.publish_lqr_debug_angles = bool(param.value)
+                return SetParametersResult(successful=True)
+            elif param.name == 'publish_lqr_dynamics_debug':
+                self.publish_lqr_dynamics_debug = bool(param.value)
+                return SetParametersResult(successful=True)
+            elif param.name == 'debug_invert_roll':
+                self.debug_invert_roll = bool(param.value)
+                return SetParametersResult(successful=True)
+            elif param.name == 'debug_invert_pitch':
+                self.debug_invert_pitch = bool(param.value)
+                return SetParametersResult(successful=True)
+            elif param.name == 'debug_invert_yaw':
+                self.debug_invert_yaw = bool(param.value)
+                return SetParametersResult(successful=True)
+            elif param.name == 'damping_sign':
+                if param.type_ != Parameter.Type.DOUBLE:
+                    return SetParametersResult(successful=False, reason='damping_sign must be a float (double)')
+                if float(param.value) not in (-1.0, 1.0):
+                    return SetParametersResult(successful=False, reason='damping_sign must be either -1.0 or 1.0')
+                self.damping_sign = float(param.value)
+                self.lqr_solver.set_damping_sign(self.damping_sign)
+                self.get_logger().info(f"Damping sign set to: {self.damping_sign}")
+                return SetParametersResult(successful=True)
+            elif param.name == 'max_thruster_force_newton':
+                if param.type_ != Parameter.Type.DOUBLE:
+                    return SetParametersResult(successful=False, reason='max_thruster_force_newton must be a float (double)')
+                if float(param.value) <= 0.0:
+                    return SetParametersResult(successful=False, reason='max_thruster_force_newton must be > 0.0')
+                self.max_thruster_force_newton = float(param.value)
+                self.get_logger().info(f"Max thruster force set to: +/-{self.max_thruster_force_newton} N")
+                return SetParametersResult(successful=True)
 
         # TODO handle multi params. Right now first handled param returns from this callback
         return SetParametersResult(successful=False, reason=f'Unhandled parameters :{params}')
@@ -312,75 +367,69 @@ class ControlNode(Node):
     def localization_callback(self, msg):
         """
         Process incoming localization data, update state, and trigger the LQR solver.
+        
+        This is the heartbeat of the controller. It executes entirely synchronously 
+        to guarantee zero phase-lag between sensor reception and thruster command output.
+        
+        Args:
+            msg (Odometry): The incoming filtered odometry message.
         """
-        import time
+        # Start the profiling stopwatch
         start_time = time.perf_counter()
-
-        # ----------------------------------------------------------------------
-        # ORIENTATION (Quaternion Sandwich Math)
-        # ----------------------------------------------------------------------
-        # Load ROS orientation (FLU w.r.t ENU) into SciPy Rotation object
-        quat_ros = [
+        
+        roll_flu, pitch_flu, yaw_flu = self.quaternion_to_euler(
             msg.pose.pose.orientation.x,
             msg.pose.pose.orientation.y,
             msg.pose.pose.orientation.z,
             msg.pose.pose.orientation.w
-        ]
-        R_enu_flu = R.from_quat(quat_ros).as_matrix()
-
-        # Apply the frame transformations: R_ned_frd = M_ned_enu * R_enu_flu * M_frd_flu
-        R_ned_frd_mat = self.M_ned_enu @ R_enu_flu @ self.M_frd_flu
-
-        # OPTIMIZATION: Instantiate the SciPy Rotation object ONCE here as a local variable.
-        # We will use this to extract state now, and to calculate error later.
-        R_current = R.from_matrix(R_ned_frd_mat)
-
-        # Extract intrinsic Z-Y-X Euler angles from the correctly oriented matrix
-        yaw_ned, pitch_ned, roll_ned = R_current.as_euler('zyx', degrees=False)
-
-        # Temporary yaw offset to match current field convention
-        yaw_offset_deg = 58.3
-        yaw_offset_rad = math.radians(yaw_offset_deg)
-        yaw_ned_corrected = yaw_ned - yaw_offset_rad
-        yaw_ned_corrected = (yaw_ned_corrected + math.pi) % (2 * math.pi) - math.pi
-
+        )
 
         # ----------------------------------------------------------------------
-        # POSITION & VELOCITIES
+        # FRAME TRANSLATION: ROS ENU/FLU to Marine NED/FRD
+        # ROS strictly uses East-North-Up (World) and Forward-Left-Up (Body).
+        # Our physical LQR math model assumes North-East-Down (World) and 
+        # Forward-Right-Down (Body). We intercept and translate them here.
         # ----------------------------------------------------------------------
-        pos_enu = np.array([
-            msg.pose.pose.position.x,
-            msg.pose.pose.position.y,
-            msg.pose.pose.position.z
-        ], dtype=np.float64)
+        
+        # Update the pre-allocated current_state array IN-PLACE (zero-copy overhead)
+        
+        # World Frame: ENU -> NED
+        self.current_state[0] = msg.pose.pose.position.y     # X becomes North (Y)
+        self.current_state[1] = msg.pose.pose.position.x     # Y becomes East (X)
+        self.current_state[2] = -msg.pose.pose.position.z    # Z is inverted (Down)
+        self.current_state[3] = roll_flu
+        self.current_state[4] = -pitch_flu                   # Pitch is inverted
+        
+        # Shift Yaw 90 degrees so 0 Rad faces North instead of East
+        yaw_ned = (math.pi / 2.0) - yaw_flu
+        self.current_state[5] = (yaw_ned + math.pi) % (2 * math.pi) - math.pi
 
-        vel_lin_flu = np.array([
-            msg.twist.twist.linear.x,
-            msg.twist.twist.linear.y,
-            msg.twist.twist.linear.z
-        ], dtype=np.float64)
+        # Runtime diagnostics: optional sign flips to isolate axis convention issues
+        if self.debug_invert_roll:
+            self.current_state[3] = -self.current_state[3]
+        if self.debug_invert_pitch:
+            self.current_state[4] = -self.current_state[4]
+        if self.debug_invert_yaw:
+            self.current_state[5] = -self.current_state[5]
+            self.current_state[5] = (self.current_state[5] + math.pi) % (2 * math.pi) - math.pi
 
-        vel_ang_flu = np.array([
-            msg.twist.twist.angular.x,
-            msg.twist.twist.angular.y,
-            msg.twist.twist.angular.z
-        ], dtype=np.float64)
+        # Body Frame: FLU -> FRD (Velocities)
+        self.current_state[6] = msg.twist.twist.linear.x
+        self.current_state[7] = -msg.twist.twist.linear.y    # Left to Right
+        self.current_state[8] = -msg.twist.twist.linear.z    # Up to Down
+        self.current_state[9] = msg.twist.twist.angular.x
+        self.current_state[10] = -msg.twist.twist.angular.y  # Pitch to -Pitch
+        self.current_state[11] = -msg.twist.twist.angular.z  # Yaw to -Yaw
 
-        pos_ned = self.M_ned_enu @ pos_enu
-        vel_lin_frd = self.M_frd_flu @ vel_lin_flu
-        vel_ang_frd = self.M_frd_flu @ vel_ang_flu
-
-        # ----------------------------------------------------------------------
-        # UPDATE STATE IN-PLACE
-        # ----------------------------------------------------------------------
-        self.current_state[0:3] = pos_ned
-        self.current_state[3]   = roll_ned
-        self.current_state[4]   = pitch_ned
-        self.current_state[5]   = yaw_ned_corrected
-        self.current_state[6:9] = vel_lin_frd
-        self.current_state[9:12] = vel_ang_frd
-
-        # --- Initial Target State Management ---
+        if self.publish_lqr_debug_angles:
+            dbg = Float64MultiArray()
+            dbg.data = [
+                roll_flu, pitch_flu, yaw_flu,
+                self.current_state[3], self.current_state[4], self.current_state[5]
+            ]
+            self.lqr_debug_pub.publish(dbg)
+        
+        # --- Target State Management ---
         with self.target_state_lock:
             # First-run initialization: If the Sub just booted, set its target 
             # coordinate to exactly where it currently is so it holds position.
@@ -396,49 +445,56 @@ class ControlNode(Node):
         # --- Execute Control ---
         if self._current_mode in [ControlMode.BEHAVIOR, ControlMode.LQR_TUNING]:
             
-            # 1. Calculate linear errors directly (Position and Velocity are fine to subtract)
-            lqr_error = self.current_state - target_state_copy 
+            # Native vectorized math to calculate the error
+            lqr_error = target_state_copy - self.current_state
             
-            # 2. Reconstruct ONLY the Target Rotation object from the Euler arrays
-            # Since the target only exists as Euler angles in the array, we must build it here.
-            #R_targ = R.from_euler('zyx', [target_state_copy[5], target_state_copy[4], target_state_copy[3]])
-            R_curr_ctrl = R.from_euler('zyx', [self.current_state[5], self.current_state[4], self.current_state[3]])
-            R_targ = R.from_euler('zyx', [target_state_copy[5], target_state_copy[4], target_state_copy[3]])
-            
-            # 3. Calculate shortest-path relative rotation matrix
-            # We reuse the exact R_current object instantiated at the top of the callback!
-            #R_err = R_current.inv() * R_targ
-            R_err = R_curr_ctrl.inv() * R_targ
-            
-            # 4. Extract the true error angles safely. 
-            #err_yaw, err_pitch, err_roll = R_err.as_euler('zyx')
-            err_yaw, err_pitch, err_roll = R_err.as_euler('zyx')
-            
-            # 5. Overwrite the angle errors in the lqr_error array
-            lqr_error[3] = err_roll
-            lqr_error[4] = err_pitch
-            lqr_error[5] = err_yaw
+            # Crucial: Wrap Roll/Pitch/Yaw errors so the sub doesn't aggressively spin 360 degrees
+            lqr_error[3:6] = self.wrap_angles_to_pi(lqr_error[3:6])
             
             # Fire the mathematical solver
             thrusters_force = self.lqr_solver.compute_thrust_force(
                 self.current_state, lqr_error, self.q_matrix, self.r_matrix, self.inv_r_matrix
             )
+
+            # Enforce physical actuator limits in software (per thruster, Newtons).
+            thrusters_force = np.clip(
+                thrusters_force,
+                -self.max_thruster_force_newton,
+                self.max_thruster_force_newton
+            )
+
+            if self.publish_lqr_dynamics_debug:
+                # Predicted accelerations from current thruster command in NED/FRD dynamics.
+                accel_cmd = Bm[6:12, :].dot(thrusters_force)
+
+                vel_msg = Float64MultiArray()
+                # Order: [u, v, w, p, q, r]
+                vel_msg.data = [
+                    self.current_state[6], self.current_state[7], self.current_state[8],
+                    self.current_state[9], self.current_state[10], self.current_state[11]
+                ]
+                self.lqr_velocity_pub.publish(vel_msg)
+
+                accel_msg = Float64MultiArray()
+                # Order: [u_dot, v_dot, w_dot, p_dot, q_dot, r_dot]
+                accel_msg.data = [
+                    accel_cmd[0], accel_cmd[1], accel_cmd[2],
+                    accel_cmd[3], accel_cmd[4], accel_cmd[5]
+                ]
+                self.lqr_accel_cmd_pub.publish(accel_msg)
+
+                dyn_msg = Float64MultiArray()
+                dyn_msg.data = [
+                    self.current_state[6], self.current_state[7], self.current_state[8],
+                    self.current_state[9], self.current_state[10], self.current_state[11],
+                    accel_cmd[0], accel_cmd[1], accel_cmd[2],
+                    accel_cmd[3], accel_cmd[4], accel_cmd[5]
+                ]
+                self.lqr_dynamics_pub.publish(dyn_msg)
             
             # Pack and fire to the hardware node
             thrust_msg = ThrusterCommand(efforts=thrusters_force.tolist())
             self.thruster_pub.publish(thrust_msg)
-            
-            # publish error if in tuning mode, to help debugging/monitoring
-            if self._current_mode == ControlMode.LQR_TUNING:
-                lqr_error_msg = Pose()
-                lqr_error_msg.position.x = lqr_error[0]
-                lqr_error_msg.position.y = lqr_error[1]
-                lqr_error_msg.position.z = lqr_error[2]
-                lqr_error_msg.orientation.x = math.degrees(lqr_error[3])
-                lqr_error_msg.orientation.y = math.degrees(lqr_error[4])
-                lqr_error_msg.orientation.z = math.degrees(lqr_error[5])
-                self.lqr_error_pub.publish(lqr_error_msg)
-
     	# Stop the stopwatch and calculate duration in milliseconds
         end_time = time.perf_counter()
         exec_time_ms = (end_time - start_time) * 1000.0
@@ -567,34 +623,24 @@ class ControlNode(Node):
                 incoming_pose, self.global_reference_frame, timeout=Duration(seconds=1.0)
             )
             
-            quat_ros = [
-                target_pose_in_map.pose.orientation.x,
-                target_pose_in_map.pose.orientation.y,
-                target_pose_in_map.pose.orientation.z,
-                target_pose_in_map.pose.orientation.w
-            ]
+            target_roll_enu, target_pitch_enu, target_yaw_enu = self.quaternion_to_euler(
+                target_pose_in_map.pose.orientation.x, target_pose_in_map.pose.orientation.y,
+                target_pose_in_map.pose.orientation.z, target_pose_in_map.pose.orientation.w
+            )
             
-            R_enu_flu = R.from_quat(quat_ros).as_matrix()
-            R_ned_frd_mat = self.M_ned_enu @ R_enu_flu @ self.M_frd_flu
-            R_target = R.from_matrix(R_ned_frd_mat)
+            yaw_ned = (math.pi / 2.0) - target_yaw_enu
 
-            yaw_ned, pitch_ned, roll_ned = R_target.as_euler('zyx', degrees=False)
-
-            yaw_offset_deg = 58.3
-            yaw_offset_rad = math.radians(yaw_offset_deg)
-            yaw_ned = yaw_ned - yaw_offset_rad
-            yaw_ned = (yaw_ned + math.pi) % (2 * math.pi) - math.pi
-
+            # Write the new objective to the shared memory space
             with self.target_state_lock:
                 if not np.isnan(self.target_state[0]):
+                    # Apply Target ENU -> NED in-place
                     self.target_state[0] = target_pose_in_map.pose.position.y
                     self.target_state[1] = target_pose_in_map.pose.position.x
                     self.target_state[2] = -target_pose_in_map.pose.position.z
-
-                    self.target_state[3] = roll_ned
-                    self.target_state[4] = pitch_ned
-                    self.target_state[5] = yaw_ned
-
+                    self.target_state[3] = target_roll_enu
+                    self.target_state[4] = -target_pitch_enu
+                    self.target_state[5] = (yaw_ned + math.pi) % (2 * math.pi) - math.pi
+            
         except tf2_ros.TransformException as ex:
             self.get_logger().error(f'TF Error: {ex}')
             goal_handle.abort()
@@ -638,7 +684,7 @@ class ControlNode(Node):
             target_np = self.target_state.copy()
             
         # Fast array math to get absolute error magnitudes
-        lqr_error = self.current_state - target_np
+        lqr_error = target_np - self.current_state
         lqr_error[3:6] = self.wrap_angles_to_pi(lqr_error[3:6])
         
         position_errors = lqr_error[0:3] 

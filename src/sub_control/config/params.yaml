@@ -10,13 +10,14 @@ control_node:
     #    - Angle Q (Indices 3-5 -> r,p,y): Acts like a Torsional Spring. Snaps heading.
     #    - Velocity Q (Indices 6-11-> vx, vy, vz, vroll, vpitch, vyaw): Acts like a Damper (Shock Absorber). 
      #     High velocity Q forces the Sub to brake smoothly to avoid overshoot.
-    state_cost_matrix: [0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0]
-    #state_cost_matrix: [0.5, 0.5, 0.5, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0]
-
+    state_cost_matrix: [1052.4762, 578.7808, 670.0731, 3134.6757, 3959.9523, 1453.9726, 265.1124, 303.5306, 204.2912, 12.3207, 19.8116, 6.2442]
+    
     # R MATRIX (Thruster Cost): Penalizes using thruster energy. 
     #  Higher R = "Save battery, thrust is expensive." This lowers overall output force.
-    thruster_cost_matrix: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    #thruster_cost_matrix: [0.01, 0.01, 0.04, 0.04, 0.04, 0.04, 0.01, 0.01]
+    thruster_cost_matrix: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+
+    # Hard software saturation for each thruster command in Newtons.
+    max_thruster_force_newton: 40.0
 
     # Determines the minimum % at which joystick are detected.
     # 0.1 means 10% of the joystick will be ignored
