@@ -8,4 +8,4 @@ fi
 docker run -it --rm \
   --net=host \
   -v $(pwd)/workspace:/workspace \
-  ros2-humble-dev
+  ros2-humble
