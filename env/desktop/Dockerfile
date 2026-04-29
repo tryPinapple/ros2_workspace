@@ -4,9 +4,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-# --------------------------------------------------
-# 1. Base + ROS2 + outils (1 seule layer optimisée)
-# --------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     locales \
     curl \
@@ -26,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-desktop \
         ros-humble-robot-localization \
         ros-humble-rosbridge-server \
+        ros-humble-flexbe-* \
         python3-colcon-common-extensions \
         python3-rosdep \
         python3-vcstool \
@@ -35,46 +33,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libserial-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# --------------------------------------------------
-# 2. rosdep
-# --------------------------------------------------
 RUN rosdep init || true && rosdep update
 
-# --------------------------------------------------
-# 3. UNDERLAY WORKSPACE (clé de ton setup)
-# --------------------------------------------------
 WORKDIR /opt/underlay_ws
 RUN mkdir -p src
 
-# Copier uniquement le repos file (cache ++)
 COPY underlay.repos .
 
-# Import dépendances
 RUN vcs import src < underlay.repos
 
-# Fix rosbridge tests
 RUN touch /opt/underlay_ws/src/rosbridge_suite/rosbridge_test_msgs/COLCON_IGNORE
 
-# Installer dépendances system (cache si repos inchangé)
 RUN apt-get update && \
     rosdep install -i -r --from-paths src --rosdistro humble -y && \
     rm -rf /var/lib/apt/lists/*
 
-# Build underlay (stable → cache Docker efficace)
 RUN bash -c "source /opt/ros/humble/setup.bash && colcon build --cmake-args -DBUILD_TESTING=OFF"
 
-# --------------------------------------------------
-# 4. Workspace DEV (monté en volume)
-# --------------------------------------------------
 WORKDIR /workspace
 
-# pip deps (cache indépendant du code)
 COPY requirements_xavier.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
-# --------------------------------------------------
-# 5. Entrypoint propre (multi-overlay ROS)
-# --------------------------------------------------
 COPY ros_entrypoint.sh /
 RUN chmod +x /ros_entrypoint.sh
 
